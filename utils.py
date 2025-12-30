@@ -9,15 +9,15 @@ from typing import Tuple
 
 def format_currency(amount: float) -> str:
     """
-    Format a number as USD currency string.
+    Format a number as INR currency string.
     
     Args:
-        amount: Dollar amount to format
+        amount: Rupee amount to format
     
     Returns:
-        Formatted string like "$1,234.56"
+        Formatted string like "₹1,234.56"
     """
-    return f"${amount:,.2f}"
+    return f"₹{amount:,.2f}"
 
 
 def format_months_to_years(months: int) -> str:
@@ -70,7 +70,7 @@ def validate_inputs(
     
     # Check principal
     if principal <= 0:
-        errors.append("Loan amount must be greater than $0")
+        errors.append("Loan amount must be greater than ₹0")
     if principal > 100_000_000:
         errors.append("Loan amount seems unreasonably high")
     

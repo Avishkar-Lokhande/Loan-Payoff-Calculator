@@ -107,6 +107,7 @@ def generate_prepayment_schedule(
     annual_rate: float,
     monthly_payment: float,
     extra_monthly: float = 0,
+    extra_payment_months: int = 0,
     lump_sum_amount: float = 0,
     lump_sum_month: int = 1
 ) -> pd.DataFrame:
@@ -118,6 +119,7 @@ def generate_prepayment_schedule(
         annual_rate: Annual interest rate as decimal
         monthly_payment: Base monthly payment amount
         extra_monthly: Additional amount paid every month
+        extra_payment_months: Number of months to make extra payments (0 = all months)
         lump_sum_amount: One-time extra payment amount
         lump_sum_month: Month number when lump sum is applied
     
@@ -139,7 +141,13 @@ def generate_prepayment_schedule(
         interest_payment = beginning_balance * monthly_rate
         
         # Determine extra payment for this month
-        extra_this_month = extra_monthly
+        extra_this_month = 0
+        
+        # Add recurring extra payment (if within the specified duration or unlimited)
+        if extra_payment_months == 0 or month <= extra_payment_months:
+            extra_this_month += extra_monthly
+        
+        # Add lump sum if this is the right month
         if month == lump_sum_month:
             extra_this_month += lump_sum_amount
         

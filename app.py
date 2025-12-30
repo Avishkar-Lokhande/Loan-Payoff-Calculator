@@ -60,69 +60,100 @@ st.markdown("""
         padding: 15px;
         border-left: 5px solid #28a745;
     }
+    .section-header {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 10px;
+        border-radius: 5px;
+        color: white;
+        margin-bottom: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============ SIDEBAR INPUTS ============
 st.sidebar.title("💰 Loan Payoff Calculator")
+st.sidebar.caption("All amounts in Indian Rupees (₹)")
 st.sidebar.markdown("---")
 
-# Loan Details Section
+# Section 1: Basic Loan Details
 st.sidebar.header("📋 Loan Details")
 
 principal = st.sidebar.number_input(
-    "Loan Amount ($)",
-    min_value=1000,
-    max_value=10_000_000,
-    value=300_000,
-    step=1000,
-    help="The total amount you're borrowing"
+    "Loan Amount (₹)",
+    min_value=10000,
+    max_value=100_000_000,
+    value=5_000_000,
+    step=50000,
+    help="The total loan amount you borrowed"
 )
 
 annual_rate_percent = st.sidebar.number_input(
     "Annual Interest Rate (%)",
     min_value=0.0,
     max_value=30.0,
-    value=6.5,
+    value=8.5,
     step=0.1,
     help="Your loan's annual interest rate"
 )
 
 term_years = st.sidebar.number_input(
-    "Loan Term (years)",
+    "Original Loan Term (years)",
     min_value=1,
     max_value=40,
-    value=30,
+    value=20,
     step=1,
-    help="Total length of the loan"
+    help="Total length of your loan"
 )
 
-# Prepayment Options Section
-st.sidebar.markdown("---")
-st.sidebar.header("💵 Extra Payment Options")
-
-extra_monthly = st.sidebar.number_input(
-    "Extra Monthly Payment ($)",
+monthly_emi = st.sidebar.number_input(
+    "Current Monthly EMI (₹)",
     min_value=0,
-    max_value=100_000,
+    max_value=10_000_000,
     value=0,
-    step=50,
-    help="Additional amount you'll pay each month"
-)
-
-lump_sum = st.sidebar.number_input(
-    "One-Time Lump Sum ($)",
-    min_value=0,
-    max_value=1_000_000,
-    value=0,
-    step=1000,
-    help="A single extra payment you plan to make"
+    step=500,
+    help="Your current monthly installment. Leave 0 to auto-calculate."
 )
 
 term_months = term_years * 12
+
+# Section 2: Extra Monthly Payment
+st.sidebar.markdown("---")
+st.sidebar.header("💵 Extra Monthly Payment")
+
+extra_monthly = st.sidebar.number_input(
+    "Extra Amount Per Month (₹)",
+    min_value=0,
+    max_value=10_000_000,
+    value=0,
+    step=500,
+    help="Additional amount you'll pay each month on top of EMI"
+)
+
+extra_payment_duration = st.sidebar.number_input(
+    "For How Many Months?",
+    min_value=0,
+    max_value=term_months,
+    value=0,
+    step=12,
+    help="Number of months to make extra payments. 0 = entire loan duration"
+)
+
+# Section 3: Lump Sum Payment
+st.sidebar.markdown("---")
+st.sidebar.header("🎁 One-Time Lump Sum")
+
+lump_sum = st.sidebar.number_input(
+    "Lump Sum Amount (₹)",
+    min_value=0,
+    max_value=100_000_000,
+    value=0,
+    step=10000,
+    help="A one-time extra payment you plan to make"
+)
+
 lump_sum_month = st.sidebar.number_input(
-    "Lump Sum Payment Month",
+    "In Which Month?",
     min_value=1,
     max_value=term_months,
     value=min(12, term_months),
@@ -142,11 +173,20 @@ if not is_valid:
 # Convert rate to decimal
 annual_rate = annual_rate_percent / 100
 
-# Calculate base monthly payment
-monthly_payment = calculate_monthly_payment(principal, annual_rate, term_months)
+# Calculate or use provided monthly payment
+calculated_emi = calculate_monthly_payment(principal, annual_rate, term_months)
+if monthly_emi == 0:
+    monthly_payment = calculated_emi
+else:
+    monthly_payment = monthly_emi
 
 st.sidebar.markdown("---")
-st.sidebar.success(f"📊 Base Monthly Payment: **{format_currency(monthly_payment)}**")
+if monthly_emi == 0:
+    st.sidebar.success(f"📊 Calculated EMI: **{format_currency(monthly_payment)}**")
+else:
+    st.sidebar.success(f"📊 Your EMI: **{format_currency(monthly_payment)}**")
+    if abs(monthly_emi - calculated_emi) > 100:
+        st.sidebar.caption(f"(Standard EMI would be {format_currency(calculated_emi)})")
 
 # Show loan type suggestion
 loan_suggestion = get_loan_type_suggestion(principal, term_years)
@@ -166,7 +206,7 @@ with st.spinner("Calculating your loan scenarios..."):
 
         prepay_schedule = generate_prepayment_schedule(
             principal, annual_rate, monthly_payment,
-            extra_monthly, lump_sum, lump_sum_month
+            extra_monthly, extra_payment_duration, lump_sum, lump_sum_month
         )
 
         comparison = calculate_scenario_comparison(base_schedule, prepay_schedule, principal)
@@ -182,7 +222,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Summary", 
     "📅 Amortization Schedule", 
     "📈 Visualizations",
-    "🔮 What-If Scenarios",
+    "🎯 Target Payoff Calculator",
     "📖 Methodology"
 ])
 
@@ -224,7 +264,7 @@ with tab1:
     
     comparison_data = {
         'Metric': [
-            'Monthly Payment',
+            'Monthly EMI',
             'Total Months',
             'Payoff Time',
             'Total Interest',
@@ -240,7 +280,7 @@ with tab1:
             format_currency(0)
         ],
         'With Prepayment': [
-            format_currency(monthly_payment + extra_monthly),
+            format_currency(monthly_payment + extra_monthly) if extra_payment_duration == 0 else f"{format_currency(monthly_payment + extra_monthly)} (for {extra_payment_duration} months)",
             comparison['prepay_months'],
             format_months_to_years(comparison['prepay_months']),
             format_currency(comparison['prepay_total_interest']),
@@ -293,7 +333,7 @@ with tab2:
     formatted_schedule = display_schedule.copy()
     for col in currency_cols:
         if col in formatted_schedule.columns:
-            formatted_schedule[col] = formatted_schedule[col].apply(lambda x: f"${x:,.2f}")
+            formatted_schedule[col] = formatted_schedule[col].apply(lambda x: f"₹{x:,.2f}")
     
     st.dataframe(formatted_schedule, use_container_width=True, hide_index=True)
     
@@ -381,92 +421,176 @@ with tab3:
         st.plotly_chart(fig_savings, use_container_width=True)
 
 
-# ============ TAB 4: WHAT-IF SCENARIOS ============
+# ============ TAB 4: TARGET PAYOFF CALCULATOR ============
 with tab4:
-    st.header("What-If Scenario Planner")
-    
+    st.header("🎯 Target Payoff Calculator")
     st.markdown("""
-    Use this tool to explore different payoff strategies and find the right balance 
-    for your budget.
+    Want to pay off your loan faster? Enter your target timeline and we'll calculate 
+    exactly how much extra you need to pay each month.
     """)
     
-    st.subheader("🎯 Target Payoff Calculator")
-    st.caption("Find out how much extra you need to pay to reach your goal")
+    st.markdown("---")
     
-    # Target years slider
-    target_years = st.slider(
-        "I want to pay off my loan in...",
-        min_value=1,
-        max_value=term_years,
-        value=max(1, term_years // 2),
-        format="%d years"
-    )
+    # Reverse Calculator Section
+    st.subheader("Calculate Required Extra Payment")
     
-    target_months = target_years * 12
+    col1, col2, col3 = st.columns(3)
     
-    if target_months < term_months:
+    with col1:
+        target_years_input = st.number_input(
+            "Target Payoff Time (years)",
+            min_value=1,
+            max_value=term_years - 1,
+            value=max(1, term_years // 2),
+            step=1,
+            help="How many years do you want to pay off the loan in?"
+        )
+    
+    with col2:
+        st.number_input(
+            "Interest Rate (%)",
+            value=annual_rate_percent,
+            disabled=True,
+            help="Your loan's interest rate (from sidebar)"
+        )
+    
+    with col3:
+        st.number_input(
+            "Current Monthly EMI (₹)",
+            value=float(monthly_payment),
+            disabled=True,
+            help="Your current monthly payment (from sidebar)"
+        )
+    
+    target_months_input = target_years_input * 12
+    
+    if target_months_input < term_months:
+        # Calculate required extra payment
         required_extra = calculate_target_extra_payment(
-            principal, annual_rate, monthly_payment, target_months
+            principal, annual_rate, monthly_payment, target_months_input
         )
         
-        # Calculate the resulting scenario
+        # Generate the target scenario
         target_schedule = generate_prepayment_schedule(
             principal, annual_rate, monthly_payment,
-            extra_monthly=required_extra, lump_sum_amount=0, lump_sum_month=1
+            extra_monthly=required_extra, extra_payment_months=0,
+            lump_sum_amount=0, lump_sum_month=1
         )
         
         target_comparison = calculate_scenario_comparison(
             base_schedule, target_schedule, principal
         )
         
-        col1, col2 = st.columns(2)
+        st.markdown("---")
         
-        with col1:
+        # Results in highlighted boxes
+        result_col1, result_col2 = st.columns(2)
+        
+        with result_col1:
             st.success(f"""
-            ### 🎯 To pay off in {target_years} years:
+            ### 🎯 To pay off in {target_years_input} years:
             
             **Extra monthly payment needed:** {format_currency(required_extra)}
             
-            **New total monthly payment:** {format_currency(monthly_payment + required_extra)}
+            **New total EMI:** {format_currency(monthly_payment + required_extra)}
+            
+            **Months to payoff:** {len(target_schedule)} months
             """)
         
-        with col2:
+        with result_col2:
             st.info(f"""
             ### 💰 Your Savings:
             
             **Interest saved:** {format_currency(target_comparison['interest_saved'])}
             
             **Time saved:** {format_months_to_years(target_comparison['months_saved'])}
+            
+            **Savings percentage:** {target_comparison['savings_percentage']}%
             """)
+        
+        # Quick comparison table
+        st.markdown("---")
+        st.subheader("📊 Quick Comparison")
+        
+        quick_compare = pd.DataFrame({
+            'Scenario': ['Original Loan', f'Pay off in {target_years_input} years'],
+            'Monthly Payment': [format_currency(monthly_payment), format_currency(monthly_payment + required_extra)],
+            'Total Duration': [format_months_to_years(term_months), format_months_to_years(len(target_schedule))],
+            'Total Interest': [format_currency(comparison['base_total_interest']), format_currency(target_comparison['prepay_total_interest'])],
+            'You Save': ['-', format_currency(target_comparison['interest_saved'])]
+        })
+        
+        st.dataframe(quick_compare, use_container_width=True, hide_index=True)
+    
     else:
-        st.info("Select a target that's shorter than your current loan term to see required extra payments.")
+        st.warning("Please select a target that's shorter than your original loan term.")
     
     st.markdown("---")
     
-    # Custom scenario comparison
-    st.subheader("📊 Compare Multiple Scenarios")
-    st.caption("Add different extra payment amounts to compare side by side")
+    # Multiple scenarios comparison
+    st.subheader("📊 Compare Multiple Target Timelines")
+    st.caption("See how different payoff targets affect your payments and savings")
+    
+    # Generate comparison for different target years
+    timeline_options = []
+    for years in [5, 10, 15, 20, 25]:
+        if years < term_years:
+            target_m = years * 12
+            extra_needed = calculate_target_extra_payment(
+                principal, annual_rate, monthly_payment, target_m
+            )
+            
+            temp_schedule = generate_prepayment_schedule(
+                principal, annual_rate, monthly_payment,
+                extra_monthly=extra_needed, extra_payment_months=0,
+                lump_sum_amount=0, lump_sum_month=1
+            )
+            
+            temp_comparison = calculate_scenario_comparison(
+                base_schedule, temp_schedule, principal
+            )
+            
+            timeline_options.append({
+                'Target': f'{years} years',
+                'Extra Monthly': format_currency(extra_needed),
+                'Total EMI': format_currency(monthly_payment + extra_needed),
+                'Interest Saved': format_currency(temp_comparison['interest_saved']),
+                'Savings %': f"{temp_comparison['savings_percentage']}%"
+            })
+    
+    if timeline_options:
+        timeline_df = pd.DataFrame(timeline_options)
+        st.dataframe(timeline_df, use_container_width=True, hide_index=True)
+    
+    st.markdown("---")
+    
+    # Custom scenario builder
+    st.subheader("🔧 Custom Scenario Builder")
+    st.caption("Add your own scenarios to compare")
     
     # Initialize session state for scenarios
     if 'scenarios' not in st.session_state:
-        st.session_state.scenarios = [100, 200, 500]
+        st.session_state.scenarios = [5000, 10000, 20000]
     
     col1, col2 = st.columns([3, 1])
     with col1:
         new_amount = st.number_input(
-            "Extra payment amount to add:",
+            "Extra payment amount to add (₹):",
             min_value=0,
-            max_value=50000,
-            value=300,
-            step=50
+            max_value=5000000,
+            value=15000,
+            step=1000
         )
     with col2:
-        if st.button("➕ Add Scenario"):
-            if new_amount not in st.session_state.scenarios:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("➕ Add"):
+            if new_amount not in st.session_state.scenarios and new_amount > 0:
                 st.session_state.scenarios.append(new_amount)
+                st.rerun()
     
-    if st.button("🗑️ Clear All Scenarios"):
+    if st.button("🗑️ Clear All"):
         st.session_state.scenarios = []
+        st.rerun()
     
     # Generate comparison table
     if st.session_state.scenarios:
@@ -475,7 +599,8 @@ with tab4:
         for extra in sorted(st.session_state.scenarios):
             scenario_schedule = generate_prepayment_schedule(
                 principal, annual_rate, monthly_payment,
-                extra_monthly=extra, lump_sum_amount=0, lump_sum_month=1
+                extra_monthly=extra, extra_payment_months=0,
+                lump_sum_amount=0, lump_sum_month=1
             )
             
             scenario_comparison = calculate_scenario_comparison(
@@ -484,7 +609,7 @@ with tab4:
             
             scenario_results.append({
                 'Extra Monthly': format_currency(extra),
-                'Total Monthly': format_currency(monthly_payment + extra),
+                'Total EMI': format_currency(monthly_payment + extra),
                 'Months to Payoff': scenario_comparison['prepay_months'],
                 'Payoff Time': format_months_to_years(scenario_comparison['prepay_months']),
                 'Interest Saved': format_currency(scenario_comparison['interest_saved']),
@@ -504,14 +629,14 @@ with tab5:
     schedules and analyze the impact of prepayments.
     """)
     
-    with st.expander("📐 Monthly Payment Formula", expanded=True):
+    with st.expander("📐 Monthly EMI Formula", expanded=True):
         st.markdown("""
-        The monthly payment is calculated using the standard amortization formula:
+        The monthly EMI is calculated using the standard amortization formula:
         
-        $$PMT = P \\times \\frac{r(1+r)^n}{(1+r)^n - 1}$$
+        $$EMI = P \\times \\frac{r(1+r)^n}{(1+r)^n - 1}$$
         
         Where:
-        - **PMT** = Monthly payment
+        - **EMI** = Equated Monthly Installment
         - **P** = Principal (loan amount)
         - **r** = Monthly interest rate (annual rate / 12)
         - **n** = Total number of payments (months)
@@ -527,7 +652,7 @@ with tab5:
         
         The principal portion of your payment is:
         
-        $$Principal\\ Payment = Monthly\\ Payment - Interest$$
+        $$Principal\\ Payment = EMI - Interest$$
         
         Your new balance becomes:
         
@@ -538,8 +663,8 @@ with tab5:
         st.markdown("""
         When you make extra payments:
         
-        1. **Extra Monthly Payments** - Added to each month's payment, going entirely 
-           toward principal
+        1. **Extra Monthly Payments** - Added to each month's EMI, going entirely 
+           toward principal. You can specify for how many months.
         2. **Lump Sum Payments** - One-time payment applied in a specific month, 
            reducing principal immediately
         
@@ -550,6 +675,18 @@ with tab5:
         
         **Note:** Extra payments are applied directly to principal, which then reduces 
         future interest charges since interest is calculated on remaining balance.
+        """)
+    
+    with st.expander("🎯 Target Payoff Calculator"):
+        st.markdown("""
+        The reverse calculator uses binary search to find the exact extra payment needed:
+        
+        1. Input your target payoff timeline (e.g., 15 years instead of 30)
+        2. The algorithm iteratively tests different extra payment amounts
+        3. It finds the minimum extra payment that achieves your target
+        
+        This helps you plan your budget and understand the trade-off between 
+        higher monthly payments and interest savings.
         """)
     
     with st.expander("⚠️ Disclaimer"):
@@ -570,7 +707,7 @@ with tab5:
         """)
     
     st.markdown("---")
-    st.caption("Built with Streamlit • Made for Finance Enthusiasts")
+    st.caption("Built with Streamlit • Made for Finance Enthusiasts 🇮🇳")
 
 
 # Footer
