@@ -1,4 +1,4 @@
-# 💰 Loan Payoff Calculator
+#  Loan Payoff Calculator
 
 A comprehensive Streamlit web application for analyzing loan amortization schedules and exploring prepayment strategies.
 
@@ -6,7 +6,7 @@ A comprehensive Streamlit web application for analyzing loan amortization schedu
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## 🎯 Features
+##  Features
 
 - **Loan Amortization Calculator** - Generate detailed month-by-month payment schedules
 - **Prepayment Analysis** - See how extra payments affect your loan
@@ -19,7 +19,7 @@ A comprehensive Streamlit web application for analyzing loan amortization schedu
 
 *Coming soon!*
 
-## 🚀 Installation
+##  Installation
 
 1. Clone or download this project:
 ```bash
@@ -51,7 +51,7 @@ loan_payoff_calculator/
 └── README.md         # This file
 ```
 
-## 🧮 How It Works
+##  How It Works
 
 ### Monthly Payment Formula
 
@@ -80,7 +80,7 @@ Extra payments go directly toward principal, which:
 - Shortens your loan term
 - Builds equity faster
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 - **Python 3.9+** - Programming language
 - **Streamlit** - Web framework
@@ -88,7 +88,7 @@ Extra payments go directly toward principal, which:
 - **NumPy Financial** - Financial calculations
 - **Plotly** - Interactive charts
 
-## 📊 App Tabs
+##  App Tabs
 
 1. **Summary** - Quick comparison of base vs prepayment scenarios
 2. **Amortization Schedule** - Full month-by-month breakdown
@@ -121,4 +121,5 @@ MIT License - feel free to use this project for learning or building your own to
 
 ---
 
-Made with ❤️ using Streamlit
+
+
