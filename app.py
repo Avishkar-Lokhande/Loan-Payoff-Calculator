@@ -71,51 +71,58 @@ st.markdown("""
     /* Floating Social Media Icons */
     .social-icons {
         position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 9999;
+        top: 70px;
+        right: 15px;
+        z-index: 999999;
         display: flex;
-        gap: 15px;
+        flex-direction: column;
+        gap: 12px;
     }
     
     .social-icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 45px;
-        height: 45px;
+        width: 50px;
+        height: 50px;
         border-radius: 50%;
         background-color: #ffffff;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         transition: all 0.3s ease;
         text-decoration: none;
+        cursor: pointer;
     }
     
     .social-icon:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        transform: scale(1.1);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
     
     .social-icon.linkedin {
-        background: linear-gradient(135deg, #0077b5 0%, #005885 100%);
+        background: #0077b5;
     }
     
     .social-icon.linkedin:hover {
-        background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
+        background: #0088cc;
     }
     
     .social-icon.github {
-        background: linear-gradient(135deg, #333333 0%, #1a1a1a 100%);
+        background: #333333;
     }
     
     .social-icon.github:hover {
-        background: linear-gradient(135deg, #444444 0%, #2a2a2a 100%);
+        background: #24292e;
     }
     
     .social-icon svg {
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
         fill: white;
+    }
+    
+    /* Ensure icons stay on top of everything */
+    div[data-testid="stToolbar"] {
+        z-index: 1000 !important;
     }
 </style>
 """, unsafe_allow_html=True)
