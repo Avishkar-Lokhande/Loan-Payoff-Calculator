@@ -9,15 +9,50 @@ from typing import Tuple
 
 def format_currency(amount: float) -> str:
     """
-    Format a number as INR currency string.
+    Format a number as INR currency string using Indian numbering system.
     
     Args:
         amount: Rupee amount to format
     
     Returns:
-        Formatted string like "₹1,234.56"
+        Formatted string like "₹12,34,567.89" (Indian format)
     """
-    return f"₹{amount:,.2f}"
+    # Handle negative numbers
+    is_negative = amount < 0
+    amount = abs(amount)
+    
+    # Split into integer and decimal parts
+    rupees = int(amount)
+    paise = int(round((amount - rupees) * 100))
+    
+    # Convert to string and reverse for easier processing
+    rupees_str = str(rupees)
+    
+    # Indian numbering: first 3 digits, then groups of 2
+    if len(rupees_str) <= 3:
+        formatted = rupees_str
+    else:
+        # Last 3 digits
+        formatted = rupees_str[-3:]
+        remaining = rupees_str[:-3]
+        
+        # Add commas every 2 digits for the rest
+        while remaining:
+            if len(remaining) <= 2:
+                formatted = remaining + ',' + formatted
+                break
+            else:
+                formatted = remaining[-2:] + ',' + formatted
+                remaining = remaining[:-2]
+    
+    # Add decimal part
+    result = f"₹{formatted}.{paise:02d}"
+    
+    # Add negative sign if needed
+    if is_negative:
+        result = f"-{result}"
+    
+    return result
 
 
 def format_months_to_years(months: int) -> str:
