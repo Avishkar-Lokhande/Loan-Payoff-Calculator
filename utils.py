@@ -157,3 +157,31 @@ def format_percentage(value: float, decimals: int = 2) -> str:
         Formatted string like "6.50%"
     """
     return f"{value:.{decimals}f}%"
+
+
+def validate_emi_sufficiency(principal: float, annual_rate: float, term_months: int, emi: float) -> Tuple[bool, str]:
+    """
+    Check if EMI is sufficient to pay off loan in given term.
+    
+    Args:
+        principal: Loan amount
+        annual_rate: Annual interest rate as decimal (e.g., 0.065 for 6.5%)
+        term_months: Loan term in months
+        emi: Monthly EMI payment
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    # Handle zero interest rate edge case
+    if annual_rate == 0:
+        min_emi = principal / term_months
+    else:
+        # Calculate minimum EMI using standard amortization formula
+        monthly_rate = annual_rate / 12
+        min_emi = principal * monthly_rate * (1 + monthly_rate)**term_months / ((1 + monthly_rate)**term_months - 1)
+    
+    # Allow 5% tolerance for rounding
+    if emi < min_emi * 0.95:
+        return False, f"EMI too low to pay off loan in {term_months} months. Minimum required: ₹{min_emi:,.0f}"
+    
+    return True, ""

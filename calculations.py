@@ -45,12 +45,13 @@ def generate_base_amortization_schedule(
 ) -> pd.DataFrame:
     """
     Generate a complete amortization schedule without any extra payments.
+    Runs until loan is fully paid off, regardless of original term.
     
     Args:
         principal: Original loan amount
         annual_rate: Annual interest rate as decimal
         monthly_payment: Fixed monthly payment amount
-        term_months: Total loan term in months
+        term_months: Maximum loan term in months (used as safety limit)
     
     Returns:
         DataFrame with month-by-month breakdown of payments
@@ -61,8 +62,13 @@ def generate_base_amortization_schedule(
     schedule_data = []
     balance = principal
     cumulative_interest = 0
+    month = 0
     
-    for month in range(1, term_months + 1):
+    # Run until balance is paid off (with safety limit at 2x original term)
+    max_months = max(term_months * 2, 600)
+    
+    while balance > 0.01 and month < max_months:
+        month += 1
         beginning_balance = balance
         
         # Calculate interest for this month
@@ -72,13 +78,13 @@ def generate_base_amortization_schedule(
         principal_payment = monthly_payment - interest_payment
         
         # Handle final month - might need adjustment
-        if principal_payment > beginning_balance:
+        if principal_payment >= beginning_balance:
             principal_payment = beginning_balance
             actual_payment = principal_payment + interest_payment
         else:
             actual_payment = monthly_payment
         
-        ending_balance = beginning_balance - principal_payment
+        ending_balance = max(beginning_balance - principal_payment, 0)
         cumulative_interest += interest_payment
         
         # Add this month's data
@@ -88,15 +94,23 @@ def generate_base_amortization_schedule(
             'Monthly_Payment': round(actual_payment, 2),
             'Principal_Payment': round(principal_payment, 2),
             'Interest_Payment': round(interest_payment, 2),
-            'Ending_Balance': round(max(ending_balance, 0), 2),
+            'Ending_Balance': round(ending_balance, 2),
             'Cumulative_Interest': round(cumulative_interest, 2)
         })
         
         balance = ending_balance
         
         # Stop if loan is paid off
-        if balance <= 0:
+        if balance <= 0.01:
             break
+    
+    # Check if loan was paid off
+    if balance > 0.01:
+        raise ValueError(
+            f"Loan cannot be paid off with EMI ₹{monthly_payment:,.0f}. "
+            f"Balance remaining after {month} months: ₹{balance:,.0f}. "
+            f"Please increase your EMI or check your inputs."
+        )
     
     return pd.DataFrame(schedule_data)
 
@@ -185,6 +199,7 @@ def generate_prepayment_schedule(
         
         # Safety check - don't go beyond 50 years
         if month > 600:
+            st.warning("⚠️ Schedule exceeds 50 years. Check your EMI amount.")
             break
     
     return pd.DataFrame(schedule_data)
@@ -206,6 +221,20 @@ def calculate_scenario_comparison(
     Returns:
         Dictionary containing comparison metrics
     """
+    # Verify both schedules are complete (loan fully paid off)
+    if base_schedule.iloc[-1]['Ending_Balance'] > 1:
+        raise ValueError(
+            f"Base schedule incomplete! Remaining balance: "
+            f"₹{base_schedule.iloc[-1]['Ending_Balance']:,.2f}. "
+            f"Increase term or check EMI calculation."
+        )
+    
+    if prepay_schedule.iloc[-1]['Ending_Balance'] > 1:
+        raise ValueError(
+            f"Prepayment schedule incomplete! Remaining balance: "
+            f"₹{prepay_schedule.iloc[-1]['Ending_Balance']:,.2f}"
+        )
+    
     # Calculate totals from base schedule
     base_total_interest = base_schedule['Interest_Payment'].sum()
     base_months = len(base_schedule)
@@ -314,3 +343,133 @@ def get_payoff_summary(schedule: pd.DataFrame) -> Dict:
         'final_payment': round(schedule.iloc[-1]['Monthly_Payment'] if 'Monthly_Payment' in schedule.columns else schedule.iloc[-1]['Total_Payment'], 2),
         'avg_monthly_interest': round(schedule['Interest_Payment'].mean(), 2)
     }
+
+
+@st.cache_data(show_spinner=False)
+def calculate_remaining_schedule_from_months(
+    original_principal: float,
+    annual_rate: float,
+    monthly_payment: float,
+    months_elapsed: int,
+    original_term_months: int
+) -> tuple:
+    """
+    Calculate remaining loan schedule based on months already paid.
+    
+    Args:
+        original_principal: Original loan amount
+        annual_rate: Annual interest rate as decimal
+        monthly_payment: Fixed monthly EMI
+        months_elapsed: Number of months already paid
+        original_term_months: Original total loan term
+        
+    Returns:
+        Tuple of (remaining_schedule DataFrame, current_balance)
+    """
+    # First, calculate what the balance should be after months_elapsed
+    monthly_rate = annual_rate / 12
+    balance = original_principal
+    
+    # Fast-forward through elapsed months
+    for month in range(1, months_elapsed + 1):
+        interest = balance * monthly_rate
+        principal_payment = monthly_payment - interest
+        balance -= principal_payment
+        
+        if balance <= 0:
+            return pd.DataFrame(), 0.0  # Loan already paid off
+    
+    current_balance = balance
+    
+    # Now generate remaining schedule starting from current balance
+    schedule_data = []
+    month_number = months_elapsed + 1
+    
+    while balance > 0.01 and month_number <= original_term_months + 120:  # Some buffer
+        beginning_balance = balance
+        interest_payment = beginning_balance * monthly_rate
+        principal_payment = monthly_payment - interest_payment
+        
+        # Handle final payment
+        if principal_payment >= beginning_balance:
+            principal_payment = beginning_balance
+            actual_payment = principal_payment + interest_payment
+        else:
+            actual_payment = monthly_payment
+        
+        ending_balance = max(beginning_balance - principal_payment, 0)
+        
+        schedule_data.append({
+            'Month': month_number,
+            'Months_From_Now': month_number - months_elapsed,
+            'Beginning_Balance': round(beginning_balance, 2),
+            'Monthly_Payment': round(actual_payment, 2),
+            'Principal_Payment': round(principal_payment, 2),
+            'Interest_Payment': round(interest_payment, 2),
+            'Ending_Balance': round(ending_balance, 2)
+        })
+        
+        balance = ending_balance
+        month_number += 1
+        
+        if balance <= 0.01:
+            break
+    
+    return pd.DataFrame(schedule_data), current_balance
+
+
+@st.cache_data(show_spinner=False)
+def calculate_remaining_schedule_from_balance(
+    current_balance: float,
+    annual_rate: float,
+    monthly_payment: float
+) -> pd.DataFrame:
+    """
+    Calculate remaining schedule starting from a known balance.
+    
+    Args:
+        current_balance: Current outstanding loan balance
+        annual_rate: Annual interest rate as decimal
+        monthly_payment: Fixed monthly EMI
+        
+    Returns:
+        DataFrame with remaining payment schedule
+    """
+    monthly_rate = annual_rate / 12
+    balance = current_balance
+    schedule_data = []
+    month = 1
+    cumulative_interest = 0
+    
+    while balance > 0.01 and month <= 600:
+        beginning_balance = balance
+        interest_payment = beginning_balance * monthly_rate
+        principal_payment = monthly_payment - interest_payment
+        
+        # Handle final payment
+        if principal_payment >= beginning_balance:
+            principal_payment = beginning_balance
+            actual_payment = principal_payment + interest_payment
+        else:
+            actual_payment = monthly_payment
+        
+        ending_balance = max(beginning_balance - principal_payment, 0)
+        cumulative_interest += interest_payment
+        
+        schedule_data.append({
+            'Month': month,
+            'Beginning_Balance': round(beginning_balance, 2),
+            'Monthly_Payment': round(actual_payment, 2),
+            'Principal_Payment': round(principal_payment, 2),
+            'Interest_Payment': round(interest_payment, 2),
+            'Ending_Balance': round(ending_balance, 2),
+            'Cumulative_Interest': round(cumulative_interest, 2)
+        })
+        
+        balance = ending_balance
+        month += 1
+        
+        if balance <= 0.01:
+            break
+    
+    return pd.DataFrame(schedule_data)

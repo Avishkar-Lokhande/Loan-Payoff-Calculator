@@ -16,20 +16,24 @@ from calculations import (
     generate_base_amortization_schedule,
     generate_prepayment_schedule,
     calculate_scenario_comparison,
-    calculate_target_extra_payment
+    calculate_target_extra_payment,
+    calculate_remaining_schedule_from_months,
+    calculate_remaining_schedule_from_balance
 )
 from visualizations import (
     plot_balance_comparison,
     plot_interest_comparison,
     plot_payment_breakdown,
     plot_cumulative_savings,
-    plot_payoff_timeline
+    plot_payoff_timeline,
+    plot_loan_progress
 )
 from utils import (
     format_currency,
     format_months_to_years,
     validate_inputs,
-    get_loan_type_suggestion
+    get_loan_type_suggestion,
+    validate_emi_sufficiency
 )
 
 # Page configuration
@@ -147,48 +151,156 @@ st.markdown("""
 # ============ SIDEBAR INPUTS ============
 st.sidebar.title("💰 Loan Payoff Calculator")
 st.sidebar.caption("All amounts in Indian Rupees (₹)")
+
+# NEW: Mode selector
+calculation_mode = st.sidebar.radio(
+    "Analysis Type:",
+    ["New Loan Analysis", "Existing Loan Analysis"],
+    help="Choose 'New Loan' for planning or 'Existing Loan' to analyze your current loan"
+)
+
 st.sidebar.markdown("---")
 
-# Section 1: Basic Loan Details
-st.sidebar.header("📋 Loan Details")
+# Conditional input sections based on mode
+if calculation_mode == "New Loan Analysis":
+    # Section 1: Basic Loan Details
+    st.sidebar.header("📋 Loan Details")
 
-principal = st.sidebar.number_input(
-    "Loan Amount (₹)",
-    min_value=10000,
-    max_value=100_000_000,
-    value=5_000_000,
-    step=50000,
-    help="The total loan amount you borrowed"
-)
+    principal = st.sidebar.number_input(
+        "Loan Amount (₹)",
+        min_value=10000,
+        max_value=100_000_000,
+        value=5_000_000,
+        step=50000,
+        help="The total loan amount you borrowed"
+    )
 
-annual_rate_percent = st.sidebar.number_input(
-    "Annual Interest Rate (%)",
-    min_value=0.0,
-    max_value=30.0,
-    value=8.5,
-    step=0.1,
-    help="Your loan's annual interest rate"
-)
+    annual_rate_percent = st.sidebar.number_input(
+        "Annual Interest Rate (%)",
+        min_value=0.0,
+        max_value=30.0,
+        value=8.5,
+        step=0.1,
+        help="Your loan's annual interest rate"
+    )
 
-term_years = st.sidebar.number_input(
-    "Original Loan Term (years)",
-    min_value=1,
-    max_value=40,
-    value=20,
-    step=1,
-    help="Total length of your loan"
-)
+    term_years = st.sidebar.number_input(
+        "Original Loan Term (years)",
+        min_value=1,
+        max_value=40,
+        value=20,
+        step=1,
+        help="Total length of your loan"
+    )
 
-monthly_emi = st.sidebar.number_input(
-    "Current Monthly EMI (₹)",
-    min_value=0,
-    max_value=10_000_000,
-    value=0,
-    step=500,
-    help="Your current monthly installment. Leave 0 to auto-calculate."
-)
+    monthly_emi = st.sidebar.number_input(
+        "Current Monthly EMI (₹)",
+        min_value=0,
+        max_value=10_000_000,
+        value=0,
+        step=500,
+        help="Your current monthly installment. Leave 0 to auto-calculate."
+    )
 
-term_months = term_years * 12
+    term_months = term_years * 12
+
+else:  # Existing Loan Analysis
+    st.sidebar.header("📋 Original Loan Details")
+    
+    original_principal = st.sidebar.number_input(
+        "Original Loan Amount (₹)",
+        min_value=10000,
+        max_value=100_000_000,
+        value=5_000_000,
+        step=50000,
+        help="The original loan amount when you started"
+    )
+    
+    annual_rate_percent = st.sidebar.number_input(
+        "Annual Interest Rate (%)",
+        min_value=0.0,
+        max_value=30.0,
+        value=8.5,
+        step=0.1,
+        help="Your loan's annual interest rate"
+    )
+    
+    original_term_years = st.sidebar.number_input(
+        "Original Loan Term (years)",
+        min_value=1,
+        max_value=40,
+        value=20,
+        step=1,
+        help="Total length when loan started"
+    )
+    
+    monthly_emi = st.sidebar.number_input(
+        "Monthly EMI (₹)",
+        min_value=1000,
+        max_value=10_000_000,
+        value=43391,
+        step=500,
+        help="Your current monthly installment"
+    )
+    
+    st.sidebar.markdown("---")
+    st.sidebar.header("📍 Current Loan Status")
+    
+    # Input for how much has been paid
+    time_input_method = st.sidebar.radio(
+        "How would you like to specify your progress?",
+        ["Months/Years Completed", "Remaining Balance"],
+        help="Choose the method easiest for you"
+    )
+    
+    if time_input_method == "Months/Years Completed":
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            years_paid = st.sidebar.number_input(
+                "Years Paid",
+                min_value=0,
+                max_value=original_term_years,
+                value=5,
+                step=1
+            )
+        with col2:
+            months_paid = st.sidebar.number_input(
+                "Extra Months",
+                min_value=0,
+                max_value=11,
+                value=0,
+                step=1
+            )
+        
+        months_elapsed = years_paid * 12 + months_paid
+        
+    else:  # Remaining Balance method
+        current_balance = st.sidebar.number_input(
+            "Current Outstanding Balance (₹)",
+            min_value=0,
+            max_value=original_principal,
+            value=int(original_principal * 0.7),
+            step=10000,
+            help="Check your latest loan statement"
+        )
+        
+        # Reverse-engineer months_elapsed from balance for progress visualization
+        temp_balance = original_principal
+        months_elapsed = 0
+        monthly_rate = (annual_rate_percent / 100) / 12
+        
+        while temp_balance > current_balance and months_elapsed < 600:
+            months_elapsed += 1
+            interest = temp_balance * monthly_rate
+            principal_pay = monthly_emi - interest
+            if principal_pay <= 0:
+                break  # EMI too low
+            temp_balance -= principal_pay
+    
+    # Set common variables for later use
+    principal = original_principal
+    term_years = original_term_years
+    term_months = term_years * 12
 
 # Section 2: Extra Monthly Payment
 st.sidebar.markdown("---")
@@ -265,30 +377,154 @@ else:
 loan_suggestion = get_loan_type_suggestion(principal, term_years)
 st.sidebar.info(loan_suggestion)
 
+# Add help section
+st.sidebar.markdown("---")
+with st.sidebar.expander("ℹ️ How to Use This Calculator"):
+    st.markdown("""
+    ### New Loan Analysis
+    - Enter your proposed loan details
+    - See total cost and payment breakdown
+    - Test different prepayment strategies
+    
+    ### Existing Loan Analysis
+    - Enter your original loan terms
+    - Input how much you've already paid **OR** your current balance
+    - See remaining costs and prepayment benefits **from today**
+    
+    ### Tips
+    - Use the visualizations tab to see trends over time
+    - Try the target payoff calculator to see what extra payment you need
+    - Download the amortization schedule as CSV for your records
+    """)
+
 
 # ============ MAIN CONTENT AREA ============
 st.title("🏦 Loan Payoff Analysis")
 st.markdown(f"*Analysis generated on {datetime.now().strftime('%B %d, %Y')}*")
 
-# Generate schedules
+# Generate schedules based on mode
+# NOTE: Schedules use original column names (e.g., 'Ending_Balance', 'Monthly_Payment')
+# These are only renamed for display in the amortization table, not for calculations or visualizations
 with st.spinner("Calculating your loan scenarios..."):
     try:
-        base_schedule = generate_base_amortization_schedule(
-            principal, annual_rate, monthly_payment, term_months
-        )
+        if calculation_mode == "New Loan Analysis":
+            # Existing logic for new loans
+            base_schedule = generate_base_amortization_schedule(
+                principal, annual_rate, monthly_payment, term_months
+            )
 
-        prepay_schedule = generate_prepayment_schedule(
-            principal, annual_rate, monthly_payment,
-            extra_monthly, extra_payment_duration, lump_sum, lump_sum_month
-        )
+            prepay_schedule = generate_prepayment_schedule(
+                principal, annual_rate, monthly_payment,
+                extra_monthly, extra_payment_duration, lump_sum, lump_sum_month
+            )
 
-        comparison = calculate_scenario_comparison(base_schedule, prepay_schedule, principal)
+            comparison = calculate_scenario_comparison(base_schedule, prepay_schedule, principal)
+            
+        else:  # Existing Loan Analysis
+            annual_rate = annual_rate_percent / 100
+            
+            if time_input_method == "Months/Years Completed":
+                remaining_schedule, current_balance = calculate_remaining_schedule_from_months(
+                    original_principal,
+                    annual_rate,
+                    monthly_emi,
+                    months_elapsed,
+                    original_term_years * 12
+                )
+            else:
+                remaining_schedule = calculate_remaining_schedule_from_balance(
+                    current_balance,
+                    annual_rate,
+                    monthly_emi
+                )
+                current_balance = remaining_schedule.iloc[0]['Beginning_Balance'] if len(remaining_schedule) > 0 else 0
+            
+            # For comparison purposes, use remaining schedule as base
+            base_schedule = remaining_schedule.copy()
+            
+            # Calculate with prepayment from current position
+            if len(remaining_schedule) > 0:
+                prepay_schedule = generate_prepayment_schedule(
+                    current_balance,
+                    annual_rate,
+                    monthly_emi,
+                    extra_monthly,
+                    extra_payment_duration,
+                    lump_sum,
+                    1  # Lump sum in first remaining month
+                )
+                
+                # Set up comparison (treat current balance as the "principal" for comparison)
+                comparison = {
+                    'base_total_interest': round(remaining_schedule['Interest_Payment'].sum(), 2),
+                    'prepay_total_interest': round(prepay_schedule['Interest_Payment'].sum(), 2),
+                    'interest_saved': round(remaining_schedule['Interest_Payment'].sum() - prepay_schedule['Interest_Payment'].sum(), 2),
+                    'base_months': len(remaining_schedule),
+                    'prepay_months': len(prepay_schedule),
+                    'months_saved': len(remaining_schedule) - len(prepay_schedule),
+                    'base_total_paid': round(remaining_schedule['Monthly_Payment'].sum(), 2),
+                    'prepay_total_paid': round(prepay_schedule['Total_Payment'].sum(), 2),
+                    'total_extra_payments': round(prepay_schedule['Extra_Payment'].sum(), 2),
+                    'savings_percentage': round((remaining_schedule['Interest_Payment'].sum() - prepay_schedule['Interest_Payment'].sum()) / remaining_schedule['Interest_Payment'].sum() * 100, 2) if remaining_schedule['Interest_Payment'].sum() > 0 else 0
+                }
+                monthly_payment = monthly_emi
+            else:
+                st.success("🎉 Your loan is already paid off!")
+                st.stop()
+                
+    except ZeroDivisionError:
+        st.error("⚠️ Invalid interest rate or calculation error. Please check your inputs.")
+        st.info("💡 Tip: Make sure your EMI is sufficient to cover the interest charges.")
+        st.stop()
+    except ValueError as e:
+        st.error(f"⚠️ Input error: {str(e)}")
+        st.info("💡 Tip: Check that your EMI is high enough to pay off the loan.")
+        st.stop()
     except Exception as e:
-        st.error(f"An error occurred during calculation: {e}")
+        st.error(f"⚠️ Unexpected error: {str(e)}")
+        st.info("Please refresh and try again. If the problem persists, check your inputs.")
         st.stop()
 
 # Check if prepayment makes a difference
 has_prepayment = extra_monthly > 0 or lump_sum > 0
+
+# Show current status for existing loans
+if calculation_mode == "Existing Loan Analysis":
+    st.header("📍 Your Current Loan Status")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        progress_pct = ((original_principal - current_balance) / original_principal) * 100
+        st.metric(
+            "Current Balance",
+            format_currency(current_balance),
+            delta=f"-{progress_pct:.1f}% paid off",
+            delta_color="normal"
+        )
+    
+    with col2:
+        months_remaining = len(remaining_schedule)
+        st.metric(
+            "Months Remaining",
+            months_remaining,
+            delta=f"{months_remaining//12}y {months_remaining%12}m"
+        )
+    
+    with col3:
+        remaining_interest = remaining_schedule['Interest_Payment'].sum()
+        st.metric(
+            "Future Interest",
+            format_currency(remaining_interest)
+        )
+    
+    # Show progress visualization
+    st.plotly_chart(
+        plot_loan_progress(original_principal, current_balance, months_elapsed if time_input_method == "Months/Years Completed" else 0, original_term_years * 12),
+        use_container_width=True
+    )
+    
+    st.markdown("---")
 
 # Create tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -395,12 +631,24 @@ with tab2:
     else:
         display_schedule = prepay_schedule.copy()
     
-    # Format currency columns for display
-    currency_cols = ['Beginning_Balance', 'Monthly_Payment', 'Principal_Payment', 
-                     'Interest_Payment', 'Ending_Balance', 'Cumulative_Interest']
+    # Rename columns for better clarity
+    display_schedule = display_schedule.rename(columns={
+        'Beginning_Balance': 'Balance at Start',
+        'Ending_Balance': 'Balance at End',
+        'Monthly_Payment': 'EMI Paid',
+        'Principal_Payment': 'Principal Portion',
+        'Interest_Payment': 'Interest Portion',
+        'Extra_Payment': 'Extra Payment',
+        'Total_Payment': 'Total Payment',
+        'Cumulative_Interest': 'Total Interest So Far'
+    })
     
-    if 'Extra_Payment' in display_schedule.columns:
-        currency_cols.extend(['Extra_Payment', 'Total_Payment'])
+    # Format currency columns for display
+    currency_cols = ['Balance at Start', 'EMI Paid', 'Principal Portion', 
+                     'Interest Portion', 'Balance at End', 'Total Interest So Far']
+    
+    if 'Extra Payment' in display_schedule.columns:
+        currency_cols.extend(['Extra Payment', 'Total Payment'])
     
     # Create formatted version for display
     formatted_schedule = display_schedule.copy()
@@ -410,8 +658,8 @@ with tab2:
     
     st.dataframe(formatted_schedule, use_container_width=True, hide_index=True)
     
-    # Download button
-    csv = display_schedule.to_csv(index=False)
+    # Download button with proper encoding
+    csv = display_schedule.to_csv(index=False, encoding='utf-8-sig')
     st.download_button(
         label="📥 Download Schedule as CSV",
         data=csv,
@@ -423,15 +671,18 @@ with tab2:
     st.markdown("---")
     col1, col2, col3, col4 = st.columns(4)
     
+    # Get the original schedule to access correct column names
+    original_schedule = base_schedule if schedule_choice == "Base Scenario" else prepay_schedule
+    
     with col1:
         st.metric("Total Months", len(display_schedule))
     with col2:
-        st.metric("Total Interest", format_currency(display_schedule['Interest_Payment'].sum()))
+        st.metric("Total Interest", format_currency(original_schedule['Interest_Payment'].sum()))
     with col3:
-        first_interest = display_schedule.iloc[0]['Interest_Payment']
+        first_interest = original_schedule.iloc[0]['Interest_Payment']
         st.metric("First Month Interest", format_currency(first_interest))
     with col4:
-        last_interest = display_schedule.iloc[-1]['Interest_Payment']
+        last_interest = original_schedule.iloc[-1]['Interest_Payment']
         st.metric("Last Month Interest", format_currency(last_interest))
 
 
